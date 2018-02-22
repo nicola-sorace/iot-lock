@@ -24,13 +24,21 @@ def interpret_message(m):  #Executes appropriate command based on message receiv
 	raw = TryteString.decode(tx.signature_message_fragment)
 	msg = gpg.decrypt(raw, passphrase="iotrocks")
 	print(msg)
-	return msg
+
+	if str(msg)=="open":
+		print("Received opening instruction. Opening lock.")
+
+		verify = gpg.verify(raw).valid
+		print("signature validity:")
+		print(verify)
+	else:
+		print("Unrecognized instruction.")
 
 def listen_loop():  #Checks transactions for new lock/unlock commands
     ms = get_bundles()  #All bundles
     n = len(ms)
-    print("Printing", n, "old message(s):")
-    print_messages(ms)
+    print("Found", n, "old message(s):")
+    #print_messages(ms)
     print("------------------------")
 
     print("Waiting for new messages:")
