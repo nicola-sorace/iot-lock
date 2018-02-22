@@ -1,52 +1,79 @@
 from iota import *
 import gnupg
+import RPi.GPIO as GPIO
 import time
 
-#Connects to node and opens API stream with seed
-node = "http://iota.teamveno.eu:14265"
+### Setup connection to the IOTA network:
+node = "http://iota.teamveno.eu:14265"  #TODO Automatic node selection.
 seed = "FZVHIPWMPGSEUTFZMEVSMPUXZWMKLNRAEMYKKUTU9DFQIK99UKYPAZVGVCNHRYHAIETUI"
 api = Iota(node, seed)
 #print(api.get_node_info())
-
 #print(api.get_new_addresses(index=0, count=1)['addresses'])
 
+### Setup PGP encryption:
 gpg = gnupg.GPG(homedir="gpg")
 
-def get_bundles(n=None):
+### Setup Raspberry Pi I/O pins:
+GPIO.setmode(GPIO.BCM)
+pinA = 5
+pinB = 6
+GPIO.setup(pinA, GPIO.OUT, initial=RPIO.LOW)
+GPIO.setup(pinB, GPIO.OUT, initial=RPIO.LOW)
+
+
+def turn_lock(dir):  #Physically turns the lock. dir=0: close, dir=1: open
+        delay = 1  #Seconds to turn for.
+        
+        if dir==1:
+                a = pinA
+                b = pinB
+        else:
+                a = pinB
+                b = pinA
+
+        GPIO.output(b, False)
+        GPIO.output(a, True)
+        time.sleep(delay)
+        GPIO.output(a, False)
+
+def get_bundles(n=None):  #Get all messages from the IOTA network:
 	return api.get_transfers(start=n).get(u'bundles')
 
-def print_messages(ms):  #Takes a list of bundles
+def print_messages(ms):  #Print raw messages (does not decrypt):
 	for m in ms:
 		for tx in m:
 			print(TryteString.decode(tx.signature_message_fragment))
 
-def interpret_message(m):  #Executes appropriate command based on message received
+def interpret_message(m):  #Decrypts and executes instruction:
 	tx = m[0]
 	raw = TryteString.decode(tx.signature_message_fragment)
 	msg = str(gpg.decrypt(raw, passphrase="iotrocks"))
+
+	verify = gpg.verify(raw).valid
+	print("signature validity:")
+	print(verify)
 
 	msg = msg.split(",")
 
 	time_difference = int(time.time()) - int(msg[0])
 
-	if time_difference <= 120 and not(time_difference < 0):
+	if time_difference <= 120 and not(time_difference < 0):  #TODO Check message signature.
 		if msg[1]=="open":
-			print("Received opening instruction. Opening lock.")
-
-			verify = gpg.verify(raw).valid
-			print("signature validity:")
-			print(verify)
+			print("Opening lock.")
+			turn_lock(1)
+                if msg[1]=="close":
+                        print("Closing lock.")
+                        turn_lock(0)
 		else:
-			print("Unrecognized instruction.")
+			print("Unrecognized instruction: "+msg[1])
 	else:
 		print("Timestamp is too far off ("+str(time_difference)+").")
 
 
-def listen_loop():  #Checks transactions for new lock/unlock commands
+def listen_loop():  #Continuously checks the IOTA network for new instructions:
     ms = get_bundles()
     n = len(ms)
-    print("Found", n, "old message(s):")
-    #print_messages(ms)
+    print("Found", n, "old message(s).")
     print("------------------------")
 
     print("Waiting for new messages:")
