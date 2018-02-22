@@ -1,6 +1,8 @@
 from iota import *
 import gnupg
 
+import time
+
 node = "http://iota.teamveno.eu:14265"
 seed = "FZVHIPWMPGSEUTFZMEVSMPUXZWMKLNRAEMYKKUTU9DFQIK99UKYPAZVGVCNHRYHAIETUI" #Not actually used when sending.
 api = Iota(node, seed)
@@ -31,6 +33,6 @@ print(key)
 print(lock)
 
 #print(encrypt_message("open"))
-msg = encrypt_message(lock, key, "open")
+msg = encrypt_message(lock, key, str(int(time.time())) + "," + "open")
 print(msg)
 send_message(b'IOT', msg)
