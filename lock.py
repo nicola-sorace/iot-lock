@@ -80,13 +80,11 @@ def interpret_message(m):  #Decrypts and executes instruction:
                 if cmd=="open" or True:
                         print("User \'"+name+"\' is opening lock.")
                         turn_lock(1)
-                if cmd=="close":
+                elif cmd=="close":
                         print("User \'"+name+"\' is closing lock.")
                         turn_lock(0)
                 else:
-                        #print("Unrecognized instruction: "+cmd) #Let's just pretend it said open...
-                        print("User \'"+name+"\' is opening lock...")
-                        turn_lock(1)
+                        print("Unrecognized instruction: "+cmd)
             else:
                 print("Timestamp is too far off ("+str(time_difference)+").")
         else:
