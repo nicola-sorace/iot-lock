@@ -1,8 +1,12 @@
+rasp = False  #Set to False to debug on non-raspberryPi computer
+
 from iota import *
 #import gnupg
-import RPi.GPIO as GPIO
+if rasp:
+    import RPi.GPIO as GPIO
 import time
 import hashlib
+import pysftp
 
 ### Setup connection to the IOTA network:
 node = "http://iota.teamveno.eu:14265"  #TODO Automatic node selection.
@@ -15,25 +19,33 @@ api = Iota(node, seed)
 #gpg = gnupg.GPG(homedir="gpg")
 
 ### Setup Raspberry Pi I/O pins:
-GPIO.setmode(GPIO.BCM)
-pinA = 5
-pinB = 6
-GPIO.setup(pinA, GPIO.OUT, initial=RPIO.LOW)
-GPIO.setup(pinB, GPIO.OUT, initial=RPIO.LOW)
+if rasp:
+    GPIO.setmode(GPIO.BCM)
+    pinA = 5
+    pinB = 6
+    GPIO.setup(pinA, GPIO.OUT, initial=GPIO.LOW)
+    GPIO.setup(pinB, GPIO.OUT, initial=GPIO.LOW)
+else:
+    con = pysftp.Connection('172.20.146.217', username='pi', password='marty')
 
 def turn_lock(dir):  #Physically turns the lock. dir=0: close, dir=1: open
         delay = 1  #Seconds to turn for.
-        
-        if dir==1:
+        if rasp:
+            if dir==1:
                 a = pinA
                 b = pinB
-        else:
+            else:
                 a = pinB
                 b = pinA
-        GPIO.output(b, False)
-        GPIO.output(a, True)
-        time.sleep(delay)
-        GPIO.output(a, False)
+            GPIO.output(b, False)
+            GPIO.output(a, True)
+            time.sleep(delay)
+            GPIO.output(a, False)
+        else:
+            if dir==1:
+                con.execute("python open.py")
+            else:
+                con.execute("python close.py")
 
 def get_bundles(n=None):  #Get all messages from the IOTA network:
         return api.get_transfers(start=n).get(u'bundles')
@@ -65,14 +77,16 @@ def interpret_message(m):  #Decrypts and executes instruction:
         print(token)
         if token==str(hashlib.sha256(str.encode(tstamp+name+"password")).hexdigest()):
             if time_difference <= 120 and not(time_difference < 0):
-                if str(cmd)=="open":
+                if cmd=="open" or True:
                         print("User \'"+name+"\' is opening lock.")
                         turn_lock(1)
-                if str(cmd)=="close":
+                if cmd=="close":
                         print("User \'"+name+"\' is closing lock.")
                         turn_lock(0)
                 else:
-                        print("Unrecognized instruction: "+cmd)
+                        #print("Unrecognized instruction: "+cmd) #Let's just pretend it said open...
+                        print("User \'"+name+"\' is opening lock...")
+                        turn_lock(1)
             else:
                 print("Timestamp is too far off ("+str(time_difference)+").")
         else:
