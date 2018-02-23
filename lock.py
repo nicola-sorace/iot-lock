@@ -1,7 +1,8 @@
 from iota import *
-import gnupg
+#import gnupg
 import RPi.GPIO as GPIO
 import time
+import hashlib
 
 ### Setup connection to the IOTA network:
 node = "http://iota.teamveno.eu:14265"  #TODO Automatic node selection.
@@ -11,7 +12,7 @@ api = Iota(node, seed)
 #print(api.get_new_addresses(index=0, count=1)['addresses'])
 
 ### Setup PGP encryption:
-gpg = gnupg.GPG(homedir="gpg")
+#gpg = gnupg.GPG(homedir="gpg")
 
 ### Setup Raspberry Pi I/O pins:
 GPIO.setmode(GPIO.BCM)
@@ -19,7 +20,6 @@ pinA = 5
 pinB = 6
 GPIO.setup(pinA, GPIO.OUT, initial=RPIO.LOW)
 GPIO.setup(pinB, GPIO.OUT, initial=RPIO.LOW)
-
 
 def turn_lock(dir):  #Physically turns the lock. dir=0: close, dir=1: open
         delay = 1  #Seconds to turn for.
@@ -30,44 +30,53 @@ def turn_lock(dir):  #Physically turns the lock. dir=0: close, dir=1: open
         else:
                 a = pinB
                 b = pinA
-
         GPIO.output(b, False)
         GPIO.output(a, True)
         time.sleep(delay)
         GPIO.output(a, False)
 
 def get_bundles(n=None):  #Get all messages from the IOTA network:
-	return api.get_transfers(start=n).get(u'bundles')
+        return api.get_transfers(start=n).get(u'bundles')
 
 def print_messages(ms):  #Print raw messages (does not decrypt):
-	for m in ms:
-		for tx in m:
-			print(TryteString.decode(tx.signature_message_fragment))
+        for m in ms:
+                for tx in m:
+                        print(TryteString.decode(tx.signature_message_fragment))
 
 def interpret_message(m):  #Decrypts and executes instruction:
-	tx = m[0]
-	raw = TryteString.decode(tx.signature_message_fragment)
-	msg = str(gpg.decrypt(raw, passphrase="iotrocks"))
+        tx = m[0]
+        raw = TryteString.decode(tx.signature_message_fragment)
+        '''
+        msg = str(gpg.decrypt(raw, passphrase="iotrocks"))
 
-	verify = gpg.verify(raw).valid
-	print("signature validity:")
-	print(verify)
+        verify = gpg.verify(raw).valid
+        print("signature validity:")
+        print(verify)
+        '''
 
-	msg = msg.split(",")
+        msg = raw.split(",")
+        tstamp = msg[0]
+        name = msg[1]
+        token = msg[2]
+        cmd = msg[3]
 
-	time_difference = int(time.time()) - int(msg[0])
-
-	if time_difference <= 120 and not(time_difference < 0):  #TODO Check message signature.
-		if msg[1]=="open":
-			print("Opening lock.")
-			turn_lock(1)
-                if msg[1]=="close":
-                        print("Closing lock.")
+        time_difference = int(time.time()) - int(tstamp)
+        print("token:")
+        print(token)
+        if token==str(hashlib.sha256(str.encode(tstamp+name+"password")).hexdigest()):
+            if time_difference <= 120 and not(time_difference < 0):
+                if str(cmd)=="open":
+                        print("User \'"+name+"\' is opening lock.")
+                        turn_lock(1)
+                if str(cmd)=="close":
+                        print("User \'"+name+"\' is closing lock.")
                         turn_lock(0)
-		else:
-			print("Unrecognized instruction: "+msg[1])
-	else:
-		print("Timestamp is too far off ("+str(time_difference)+").")
+                else:
+                        print("Unrecognized instruction: "+cmd)
+            else:
+                print("Timestamp is too far off ("+str(time_difference)+").")
+        else:
+            print("Invalid token.")
 
 
 def listen_loop():  #Continuously checks the IOTA network for new instructions:
